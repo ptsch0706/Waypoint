@@ -1883,6 +1883,7 @@ function ParkMap({
   onDelete,
   showBackButton,
   onBack,
+  onRequestLocation,
 }) {
   const leafletReady = useLeafletLoader();
   const containerRef = useRef(null);
@@ -1987,9 +1988,14 @@ function ParkMap({
           <ArrowLeft size={16} /> Back
         </button>
       )}
-      {locationStatus !== "granted" && (
+      {locationStatus !== "granted" && locationStatus !== "loading" && (
         <div className="location-banner">
-          Your position isn't shown on the map because location access isn't available. Parks are still plotted at their real locations.
+          <span>Your position isn't shown on the map because location access isn't available. Parks are still plotted at their real locations.</span>
+          {locationStatus !== "unavailable" && (
+            <button className="location-retry-btn" onClick={onRequestLocation}>
+              <Navigation size={13} /> Enable location
+            </button>
+          )}
         </div>
       )}
       <div className="map-canvas-outer">
@@ -2058,22 +2064,28 @@ export default function ParkExplorer() {
   const [cameFromCard, setCameFromCard] = useState(false);
   const returnScrollRef = useRef(0);
 
-  useEffect(() => {
+  const requestLocation = useCallback(() => {
     if (!("geolocation" in navigator)) {
       setLocationStatus("unavailable");
       return;
     }
+    setLocationStatus("loading");
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
         setLocationStatus("granted");
       },
-      () => {
-        setLocationStatus("denied");
+      (err) => {
+        // code 1 = permission denied, 2 = position unavailable, 3 = timeout
+        setLocationStatus(err && err.code === 1 ? "denied" : "retryable");
       },
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 10 * 60 * 1000 }
     );
   }, []);
+
+  useEffect(() => {
+    requestLocation();
+  }, [requestLocation]);
 
   useEffect(() => {
     loadData().then((data) => {
@@ -2281,12 +2293,23 @@ export default function ParkExplorer() {
       <div className="controls">
         {locationStatus === "denied" && (
           <div className="location-banner">
-            Location access was denied, so parks are sorted alphabetically instead of by distance. You can enable location for this page in your browser settings to sort by closest.
+            <span>Location access was denied, so parks are sorted alphabetically instead of by closest. If you've since allowed it in your browser or phone settings, try again below.</span>
+            <button className="location-retry-btn" onClick={requestLocation}>
+              <Navigation size={13} /> Enable location
+            </button>
+          </div>
+        )}
+        {locationStatus === "retryable" && (
+          <div className="location-banner">
+            <span>Couldn't get your location just now — this is often temporary. Parks are sorted alphabetically in the meantime.</span>
+            <button className="location-retry-btn" onClick={requestLocation}>
+              <Navigation size={13} /> Try again
+            </button>
           </div>
         )}
         {locationStatus === "unavailable" && (
           <div className="location-banner">
-            This browser doesn't support location — parks are sorted alphabetically instead of by distance.
+            <span>This browser doesn't support location — parks are sorted alphabetically instead of by distance.</span>
           </div>
         )}
         <div className="search-row">
@@ -2401,6 +2424,7 @@ export default function ParkExplorer() {
           onDelete={deletePark}
           showBackButton={cameFromCard}
           onBack={goBackToList}
+          onRequestLocation={requestLocation}
         />
       ) : (
         <main className="park-grid">
@@ -2674,7 +2698,16 @@ function StyleBlock() {
       .location-banner {
         background: #FBF0E6; color: #8a4a1c; border: 1px solid #E8C7A3;
         border-radius: 8px; padding: 9px 12px; font-size: 12.5px; margin-bottom: 12px;
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 10px; flex-wrap: wrap;
       }
+      .location-retry-btn {
+        display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
+        background: white; color: #8a4a1c; border: 1.3px solid #E8C7A3;
+        border-radius: 7px; padding: 6px 11px; font-size: 12px; font-weight: 700;
+        font-family: 'Public Sans', sans-serif; cursor: pointer; white-space: nowrap;
+      }
+      .location-retry-btn:hover { background: #F5E4D2; }
 
       .coord-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
